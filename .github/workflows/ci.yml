@@ -1,0 +1,106 @@
+name: GitHub CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [i386, amd64, arm32v7, arm64v8, ppc64le, s390x]
+
+    container:
+      image: ${{ matrix.arch }}/ubuntu:latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build
+        run: |
+          apt update -y
+          apt install -y gcc g++ make
+          make
+          make -C test
+
+      - name: Test
+        run: |
+          cd test
+          ../src/luajit test.lua
+
+  macos:
+    runs-on: ${{ format('macos-{0}', matrix.os) }}
+
+    env:
+      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['10.15', '11.0']
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build
+        run: make
+
+      - name: Test
+        run: |
+          cd test
+          ../src/luajit test.lua
+
+  windows:
+    runs-on: windows-latest
+
+    env:
+      VCVARSALL: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat
+
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [msvc, mingw]
+        include:
+          - toolchain: msvc
+            vcarch: x86
+          - toolchain: msvc
+            vcarch: amd64
+
+    steps:
+      - uses: msys2/setup-msys2@v2
+        if: matrix.toolchain == 'mingw'
+        with:
+          release: false
+
+      - uses: actions/checkout@v2
+
+      - name: Build (MSVC)
+        if: matrix.toolchain == 'msvc'
+        shell: cmd
+        run: |
+          call "%VCVARSALL%" ${{ matrix.vcarch }}
+          cd src
+          msvcbuild
+
+      - name: Build (MinGW)
+        if: matrix.toolchain == 'mingw'
+        shell: msys2 {0}
+        run: make
+
+      - name: Test (MSVC)
+        if: matrix.toolchain == 'msvc'
+        shell: cmd
+        run: |
+          cd test
+          ..\src\luajit test.lua
+
+      - name: Test (MinGW)
+        if: matrix.toolchain == 'mingw'
+        shell: msys2 {0}
+        run: |
+          cd test
+          ../src/luajit test.lua
